@@ -3,7 +3,12 @@
   "version": "0.0.1",
   "description": "my first socket.io app",
   "dependencies": {
-    "express": "^4.10.2",
-    "socket.io": "^1.4.5"
+    "adal-node": "^0.1.19",
+    "connect-logger": "0.0.1",
+    "cookie-parser": "^1.4.1",
+    "cookie-session": "^2.0.0-alpha.1",
+    "crypto": "0.0.3",
+    "express": "^4.13.4",
+    "socket.io": "^1.4.6"
   }
 }

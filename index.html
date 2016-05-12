@@ -14,7 +14,7 @@
  </style>
  </head>
  <body>
- <h1>Node.js & Socket.io Chat Room!</h1>
+ <h1>Pat's Chat</h1>
  <ul id="messages"></ul>
  <form action="">
  <input id="m" autocomplete="off" /><button>Send</button>
@@ -22,15 +22,28 @@
  <script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
  <script src="http://code.jquery.com/jquery-1.11.1.js"></script>
  <script>
- var socket = io();
- $('form').submit(function(){
- socket.emit('chat message', $('#m').val());
- $('#m').val('');
+     var socket = io();
+
+
+
+     $('form').submit(function () {
+         var msg = getCookie('userName') + ': ' + $('#m').val();
+ socket.emit('chat message', msg);
+         $('#m').val('');
+
  return false;
  });
- socket.on('chat message', function(msg){
- $('#messages').append($('<li>').text(msg));
+ socket.on('chat message', function (msg) {
+//     msg = getCookie('userName') + ': ' + msg;
+    $('#messages').append($('<li>').text(msg));
  });
+
+ function getCookie(name) {
+     var re = new RegExp(name + "=([^;]+)");
+     var value = re.exec(document.cookie);
+     return (value != null) ? unescape(value[1]) : null;
+ }
+
  </script>
  </body>
 </html>

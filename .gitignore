@@ -31,3 +31,12 @@ node_modules
 
 # Optional REPL history
 .node_repl_history
+
+# Configuration files
+parameters.json
+*.pubxml*
+/bin
+/obj
+.ntvs_analysis.dat
+*.njsproj
+/.vs
