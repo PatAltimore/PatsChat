@@ -40,3 +40,4 @@ parameters.json
 .ntvs_analysis.dat
 *.njsproj
 /.vs
+config.js

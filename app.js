@@ -7,6 +7,9 @@ var logger = require('connect-logger');
 var cookieParser = require('cookie-parser');
 var session = require('cookie-session');
 var crypto = require('crypto');
+var passport = require('passport');
+var OIDCBearerStrategy = require('passport-azure-ad').BearerStrategy;
+var config = require('./config');
 
 var AuthenticationContext = require('adal-node').AuthenticationContext;
 
@@ -14,6 +17,12 @@ var app = express();
 app.use(logger());
 app.use(cookieParser('a deep secret'));
 app.use(session({ secret: '1234567890QWERTY' }));
+
+// Passport.js code from https://github.com/Azure-Samples/active-directory-node-webapi
+// Let's start using Passport.js
+
+app.use(passport.initialize()); // Starts passport
+app.use(passport.session()); // Provides session support 
 
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
@@ -51,7 +60,7 @@ if (!parametersFile) {
 		tenant : 'patricka.onmicrosoft.com',
 		authorityHostUrl : 'https://login.windows.net',
 		clientId : '62f6bfcb-dcba-430c-805c-9495ca49453a',
-		clientSecret: 'KeyFromDashboard',
+		clientSecret: 'Key from dashboard',
 		redirectUri: 'http://localhost:3000/getAToken'
 	};
 }
@@ -61,6 +70,61 @@ var redirectUri = parameters.redirectUri;
 var resource = '00000002-0000-0000-c000-000000000000';
 
 var templateAuthzUrl = 'https://login.windows.net/' + parameters.tenant + '/oauth2/authorize?response_type=code&client_id=<client_id>&redirect_uri=<redirect_uri>&state=<state>&resource=<resource>';
+
+// We pass these options in to the ODICBearerStrategy.
+
+var options = {
+	// The URL of the metadata document for your app. We will put the keys for token validation from the URL found in the jwks_uri tag of the in the metadata.
+	identityMetadata: config.creds.identityMetadata,
+	issuer: config.creds.issuer,
+	audience: config.creds.audience //,
+//	validateIssuer: config.creds.validateIssuer,
+//	passReqToCallback: config.creds.passReqToCallback,
+//	loggingLevel: config.creds.loggingLevel
+};
+
+/**
+/*
+/* Calling the OIDCBearerStrategy and managing users
+/*
+/* Passport pattern provides the need to manage users and info tokens
+/* with a FindorCreate() method that must be provided by the implementor.
+/* Here we just autoregister any user and implement a FindById().
+/* You'll want to do something smarter.
+**/
+
+ var findById = function (id, fn) {
+	for (var i = 0, len = users.length; i < len; i++) {
+		var user = users[i];
+		if (user.sub === id) {
+			log.info('Found user: ', user);
+			return fn(null, user);
+		}
+	}
+	return fn(null, null);
+};
+
+
+var oidcStrategy = new OIDCBearerStrategy(options,
+    function (token, done) {
+		findById(token.sub, function (err, user) {
+			if (err) {
+				return done(err);
+			}
+			if (!user) {
+				// "Auto-registration"
+				// User was added automatically as they were new. Their sub is: token.sub
+				users.push(token);
+				owner = token.sub;
+				return done(null, token);
+			}
+			owner = token.sub;
+			return done(null, user, token);
+		});
+	}
+);
+
+passport.use(OIDCBearerStrategy);
 
 app.get('/', function (req, res) {
 	res.redirect('/login');
@@ -126,17 +190,19 @@ app.get('/getAToken', function (req, res) {
 			if (refreshErr) {
 				message += 'refreshError: ' + refreshErr.message + '\n';
 			}
-			
-			res.sendFile(__dirname + '/index.html');
 		});
+
+		res.redirect('/chat');
 	});
 });
 
-app.get('/chat', function (req, res) {
-	res.sendFile(__dirname + '/index.html');
+app.get('/chat', passport.authenticate('azuread-openidconnect', { session: false }),
+	function (req, res) {
+		res.sendFile(__dirname + '/index.html');
 });
 
 io.on('connection', function (socket) {
+	
 	socket.on('chat message', function (msg) {
 		io.emit('chat message', msg);
 	});

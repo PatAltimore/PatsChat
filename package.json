@@ -4,11 +4,14 @@
   "description": "my first socket.io app",
   "dependencies": {
     "adal-node": "^0.1.19",
+    "config": "^1.20.2",
     "connect-logger": "0.0.1",
     "cookie-parser": "^1.4.1",
     "cookie-session": "^2.0.0-alpha.1",
     "crypto": "0.0.3",
     "express": "^4.13.4",
+    "passport": "^0.3.2",
+    "passport-azure-ad": "^1.4.5",
     "socket.io": "^1.4.6"
   }
 }
