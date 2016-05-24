@@ -5,24 +5,112 @@ var fs = require('fs');
 
 var logger = require('connect-logger');
 var cookieParser = require('cookie-parser');
-var session = require('cookie-session');
-var crypto = require('crypto');
+var expressSession = require('express-session');
+var bodyParser = require('body-parser');
 var passport = require('passport');
-var OIDCBearerStrategy = require('passport-azure-ad').BearerStrategy;
+var util = require('util');
+var bunyan = require('bunyan');
 var config = require('./config');
 
-var AuthenticationContext = require('adal-node').AuthenticationContext;
+// var session = require('cookie-session');
+//var passport = require('passport');
+var crypto = require('crypto');
+
+
+var OIDCStrategy = require('passport-azure-ad').OIDCStrategy;
+
+var log = bunyan.createLogger({
+	name: 'PatChat Web Application'
+});
+
+
+// Passport session setup. (Section 2)
+
+//   To support persistent login sessions, Passport needs to be able to
+//   serialize users into and deserialize users out of the session.  Typically,
+//   this will be as simple as storing the user ID when serializing, and finding
+//   the user by ID when deserializing.
+passport.serializeUser(function (user, done) {
+	done(null, user.email);
+});
+
+passport.deserializeUser(function (id, done) {
+	findByEmail(id, function (err, user) {
+		done(err, user);
+	});
+});
+
+// array to hold logged in users
+var users = [];
+
+var findByEmail = function (email, fn) {
+	for (var i = 0, len = users.length; i < len; i++) {
+		var user = users[i];
+		log.info('we are using user: ', user);
+		if (user.email === email) {
+			return fn(null, user);
+		}
+	}
+	return fn(null, null);
+};
+
+// Use the OIDCStrategy within Passport. (Section 2) 
+// 
+//   Strategies in passport require a `validate` function, which accept
+//   credentials (in this case, an OpenID identifier), and invoke a callback
+//   with a user object.
+passport.use(new OIDCStrategy({
+	callbackURL: config.creds.returnURL,
+	realm: config.creds.realm,
+	clientID: config.creds.clientID,
+	clientSecret: config.creds.clientSecret,
+	oidcIssuer: config.creds.issuer,
+	identityMetadata: config.creds.identityMetadata,
+	skipUserProfile: config.creds.skipUserProfile,
+	responseType: config.creds.responseType,
+	responseMode: config.creds.responseMode
+},
+  function (iss, sub, profile, accessToken, refreshToken, done) {
+	if (!profile.email) {
+		return done(new Error("No email found"), null);
+	}
+	// asynchronous verification, for effect...
+	process.nextTick(function () {
+		findByEmail(profile.email, function (err, user) {
+			if (err) {
+				return done(err);
+			}
+			if (!user) {
+				// "Auto-registration"
+				users.push(profile);
+				return done(null, profile);
+			}
+			return done(null, user);
+		});
+	});
+}
+));
+
+
+
+// configure Express (Section 2)
 
 var app = express();
 app.use(logger());
-app.use(cookieParser('a deep secret'));
-app.use(session({ secret: '1234567890QWERTY' }));
+//app.use(express.methodOverride()); Do I need this?
+app.use(cookieParser());
+app.use(expressSession({ secret: 'Something secret', resave: true, saveUninitialized: false }));
+app.use(bodyParser.urlencoded({ extended : true }));
 
-// Passport.js code from https://github.com/Azure-Samples/active-directory-node-webapi
-// Let's start using Passport.js
+//app.use(session({ secret: '1234567890QWERTY' }));
 
-app.use(passport.initialize()); // Starts passport
-app.use(passport.session()); // Provides session support 
+// Passport.js code from https://github.com/Azure-Samples/active-directory-node-webapp-openidconnect
+// Initialize Passport!  Also use passport.session() middleware, to support
+// persistent login sessions (recommended).
+app.use(passport.initialize());
+app.use(passport.session());
+// app.use(app.router); deprecated
+
 
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
@@ -43,6 +131,8 @@ var port = process.env.PORT || 3000;
  *   "redirectUri" : "http://localhost:3000/getAToken"
  * }
  */
+
+var AuthenticationContext = require('adal-node').AuthenticationContext;
 var parametersFile = process.argv[2] || process.env['ADAL_PARAMETERS_FILE'];
 
 var parameters;
@@ -71,62 +161,10 @@ var resource = '00000002-0000-0000-c000-000000000000';
 
 var templateAuthzUrl = 'https://login.windows.net/' + parameters.tenant + '/oauth2/authorize?response_type=code&client_id=<client_id>&redirect_uri=<redirect_uri>&state=<state>&resource=<resource>';
 
-// We pass these options in to the ODICBearerStrategy.
-
-var options = {
-	// The URL of the metadata document for your app. We will put the keys for token validation from the URL found in the jwks_uri tag of the in the metadata.
-	identityMetadata: config.creds.identityMetadata,
-	issuer: config.creds.issuer,
-	audience: config.creds.audience //,
-//	validateIssuer: config.creds.validateIssuer,
-//	passReqToCallback: config.creds.passReqToCallback,
-//	loggingLevel: config.creds.loggingLevel
-};
-
-/**
-/*
-/* Calling the OIDCBearerStrategy and managing users
-/*
-/* Passport pattern provides the need to manage users and info tokens
-/* with a FindorCreate() method that must be provided by the implementor.
-/* Here we just autoregister any user and implement a FindById().
-/* You'll want to do something smarter.
-**/
-
- var findById = function (id, fn) {
-	for (var i = 0, len = users.length; i < len; i++) {
-		var user = users[i];
-		if (user.sub === id) {
-			log.info('Found user: ', user);
-			return fn(null, user);
-		}
-	}
-	return fn(null, null);
-};
-
-
-var oidcStrategy = new OIDCBearerStrategy(options,
-    function (token, done) {
-		findById(token.sub, function (err, user) {
-			if (err) {
-				return done(err);
-			}
-			if (!user) {
-				// "Auto-registration"
-				// User was added automatically as they were new. Their sub is: token.sub
-				users.push(token);
-				owner = token.sub;
-				return done(null, token);
-			}
-			owner = token.sub;
-			return done(null, user, token);
-		});
-	}
-);
-
-passport.use(OIDCBearerStrategy);
+//Routes
 
 app.get('/', function (req, res) {
+	log.info('Redirecting to /login ');
 	res.redirect('/login');
 });
 
@@ -147,6 +185,7 @@ function createAuthorizationUrl(state) {
 	authorizationUrl = authorizationUrl.replace('<redirect_uri>', redirectUri);
 	authorizationUrl = authorizationUrl.replace('<state>', state);
 	authorizationUrl = authorizationUrl.replace('<resource>', resource);
+	log.info('authorizationUrl: %s', authorizationUrl);
 	return authorizationUrl;
 }
 
@@ -169,7 +208,8 @@ app.get('/auth', function (req, res) {
 // user owned resource.
 app.get('/getAToken', function (req, res) {
 	if (req.cookies.authstate !== req.query.state) {
-		res.send('error: state does not match');
+//		res.send('error: state does not match');
+		log.info('/getAToken: authstate %s vs. query.state %s', req.cookies.authstate, req.query.state );
 	}
 	var authenticationContext = new AuthenticationContext(authorityUrl);
 	authenticationContext.acquireTokenWithAuthorizationCode(req.query.code, redirectUri, resource, parameters.clientId, parameters.clientSecret, function (err, response) {
@@ -191,14 +231,16 @@ app.get('/getAToken', function (req, res) {
 				message += 'refreshError: ' + refreshErr.message + '\n';
 			}
 		});
-
+		
 		res.redirect('/chat');
 	});
 });
 
-app.get('/chat', passport.authenticate('azuread-openidconnect', { session: false }),
+app.get('/chat', passport.authenticate('azuread-openidconnect', { failureRedirect: '/login' }),
+//app.get('/chat', passport.authenticate('azuread-openidconnect', { status: false }),
+//app.get('/chat', 
 	function (req, res) {
-		res.sendFile(__dirname + '/index.html');
+	res.sendFile(__dirname + '/index.html');
 });
 
 io.on('connection', function (socket) {
