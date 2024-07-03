@@ -16,7 +16,7 @@
     "express": "^4.13.4",
     "express-session": "^1.13.0",
     "passport": "^0.3.2",
-    "passport-azure-ad": "^1.4.5",
+    "passport-azure-ad": "^4.3.5",
     "socket.io": "^4.7.5",
     "util": "^0.10.3"
   }
