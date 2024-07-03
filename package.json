@@ -11,7 +11,7 @@
     "cookie-parser": "^1.4.2",
     "cookie-session": "^2.0.0-alpha.1",
     "crypto": "0.0.3",
-    "ejs": "^2.4.2",
+    "ejs": "^3.1.10",
     "ejs-locals": "^1.0.2",
     "express": "^4.13.4",
     "express-session": "^1.13.0",
